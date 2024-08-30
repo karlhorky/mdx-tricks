@@ -6,150 +6,230 @@ A collection of useful MDX tricks
 
 Build a dynamic Table of Contents (TOC) in a Next.js project using React Server Components and MDX. The TOC is automatically generated from the headings in the imported MDX files.
 
-### 1. Setting up the TOC Context
-
-Create a context to store the TOC data.
-
 ```tsx
-function createTOCContext() {
-  return createContext({
-    toc: [],
-    setToc: function (toc) {},
-  });
-}
+'use client';
 
-const TableOfContentsContext = createTOCContext();
+function findParent(
+  items: TableOfContentsItem[],
+  newItem: TableOfContentsItem,
+) {
+  const lastItem = items.at(-1);
 
-function useTableOfContents() {
-  const context = useContext(TableOfContentsContext);
-  if (!context) {
+  if (!lastItem) {
     throw new Error(
-      'useTableOfContents must be used within a TableOfContentsProvider',
+      'No table of contents leaf item found with previous heading level',
     );
   }
-  return context;
-}
-```
 
-### 2. Providing the TOC Context
-
-Wrap the content with a provider component that supplies the TOC context to all child components.
-
-```tsx
-function TableOfContentsProvider({ children }) {
-  const [toc, setToc] = useState([]);
-
-  return (
-    <TableOfContentsContext.Provider value={{ toc, setToc }}>
-      {children}
-    </TableOfContentsContext.Provider>
-  );
-}
-```
-
-### 3. Inserting Headings into the TOC
-
-The helper function that inserts the headings into the correct hierarchy level.
-
-```tsx
-function insertIntoToc(toc, newItem) {
-  function insert(items, itemToInsert) {
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].level < itemToInsert.level) {
-        if (!items[i].children) items[i].children = [];
-        insert(items[i].children, itemToInsert);
-        return;
-      } else if (items[i].level === itemToInsert.level) {
-        items.splice(i + 1, 0, itemToInsert);
-        return;
-      } else if (items[i].level > itemToInsert.level) {
-        if (!items[i].children) items[i].children = [];
-        insert(items[i].children, itemToInsert);
-        return;
-      }
-    }
-    toc.push(itemToInsert);
+  if (lastItem.headingLevel === newItem.headingLevel - 1) {
+    return lastItem.items;
   }
 
-  insert(toc, newItem);
-  return toc;
+  return findParent(lastItem.items, newItem);
 }
-```
 
-### 4. Custom Header Component
+type TableOfContentsContext = {
+  tableOfContents: {
+    ids: string[];
+    items: TableOfContentsItem[];
+  };
+  addItem: (headingLevel: number, id?: string, children?: ReactNode) => void;
+};
 
-To display the TOC, we create custom components for each heading level.
+type TableOfContentsItem = {
+  headingLevel: number;
+  id: string;
+  children: ReactNode;
+  items: TableOfContentsItem[];
+};
 
-```tsx
-function Heading({ level, children, ...rest }) {
-  const { toc, setToc } = useTableOfContents();
-  const id = rest.id || children.toString().toLowerCase().replace(/\s+/g, '-');
+const tableOfContentsContext = createContext<TableOfContentsContext>({
+  tableOfContents: { ids: [], items: [] },
+  addItem: () => {},
+});
 
-  useEffect(function () {
-    setToc(function (prevToc) {
-      return insertIntoToc([...prevToc], {
-        level: level,
-        text: children,
-        id: id,
-        children: [],
-      });
+const TableOfContentsContextProvider = tableOfContentsContext.Provider;
+
+export function useTableOfContents(
+  partialItem?: Pick<TableOfContentsItem, 'headingLevel' | 'children'> & {
+    id?: string;
+  },
+) {
+  const context = useContext(tableOfContentsContext);
+  const addItem = context.addItem;
+
+  useEffect(() => {
+    if (partialItem) {
+      addItem(partialItem.headingLevel, partialItem.id, partialItem.children);
+    }
+  }, [partialItem, addItem]);
+
+  return context;
+}
+
+type TableOfContentsProviderProps = {
+  children: ReactNode;
+};
+
+export function TableOfContentsProvider(props: TableOfContentsProviderProps) {
+  const [tableOfContents, setTableOfContents] = useState<
+    TableOfContentsContext['tableOfContents']
+  >({
+    ids: [],
+    items: [],
+  });
+
+  function addItem(headingLevel: number, id?: string, children?: ReactNode) {
+    if (typeof id !== 'string' || !id) {
+      throw new Error('id is required');
+    }
+
+    setTableOfContents((prevTableOfContents) => {
+      if (headingLevel !== 2 && prevTableOfContents.items.length === 0) {
+        throw new Error(`First heading with id ${id} is not h2`);
+      }
+
+      if (prevTableOfContents.ids.includes(id)) return prevTableOfContents;
+
+      const newTableOfContents = { ...prevTableOfContents };
+
+      const newItem = {
+        headingLevel,
+        id,
+        children,
+        items: [],
+      };
+
+      newTableOfContents.ids.push(newItem.id);
+
+      const parent =
+        newItem.headingLevel === 2
+          ? newTableOfContents.items
+          : findParent(newTableOfContents.items, newItem);
+
+      parent.push(newItem);
+
+      return newTableOfContents;
     });
-  }, []);
+  }
 
-  const Tag = `h${level}`;
   return (
-    <Tag id={id} {...rest}>
-      {children}
-    </Tag>
+    <TableOfContentsContextProvider value={{ tableOfContents, addItem }}>
+      {props.children}
+    </TableOfContentsContextProvider>
   );
 }
 
-function H2(props) {
-  return Heading({ level: 2, ...props });
-}
-
-function H3(props) {
-  return Heading({ level: 3, ...props });
-}
-
-const mdxComponents = {
-  h2: H2,
-  h3: H3,
+type OlProps = {
+  items: TableOfContentsItem[];
 };
-```
 
-### 5. Render the TOC
-
-We create a component to render the TOC.
-
-```tsx
-function RenderTocItems(items) {
+function Ol(props: OlProps) {
   return (
     <ol>
-      {items.map(function (item) {
-        return (
-          <li key={item.id}>
-            {item.text}
-            {item.children.length > 0 && RenderTocItems(item.children)}
-          </li>
-        );
-      })}
+      {props.items.map((item) => (
+        <li key={`item-${item.id}`}>
+          {item.children}
+          {item.items.length > 0 && <Ol items={item.items} />}
+        </li>
+      ))}
     </ol>
   );
 }
 
-function TableOfContents() {
-  const { toc } = useTableOfContents();
-  return <nav aria-label="Table of contents">{RenderTocItems(toc)}</nav>;
+export function TableOfContents() {
+  const { tableOfContents } = useTableOfContents();
+
+  return (
+    <nav>
+      <Ol items={tableOfContents.items} />
+    </nav>
+  );
+}
+
+export function H1ForTableOfContents({
+  id,
+  children,
+  ...props
+}: HTMLAttributes<HTMLHeadingElement>) {
+  useTableOfContents({ headingLevel: 1, id, children });
+  return (
+    <h1 id={id} {...props}>
+      {children}
+    </h1>
+  );
+}
+
+export function H2ForTableOfContents({
+  id,
+  children,
+  ...props
+}: HTMLAttributes<HTMLHeadingElement>) {
+  useTableOfContents({ headingLevel: 2, id, children });
+  return (
+    <h2 id={id} {...props}>
+      {children}
+    </h2>
+  );
+}
+
+export function H3ForTableOfContents({
+  id,
+  children,
+  ...props
+}: HTMLAttributes<HTMLHeadingElement>) {
+  useTableOfContents({ headingLevel: 3, id, children });
+  return (
+    <h3 id={id} {...props}>
+      {children}
+    </h3>
+  );
+}
+
+export function H4ForTableOfContents({
+  id,
+  children,
+  ...props
+}: HTMLAttributes<HTMLHeadingElement>) {
+  useTableOfContents({ headingLevel: 4, id, children });
+  return (
+    <h4 id={id} {...props}>
+      {children}
+    </h4>
+  );
+}
+
+export function H5ForTableOfContents({
+  id,
+  children,
+  ...props
+}: HTMLAttributes<HTMLHeadingElement>) {
+  useTableOfContents({ headingLevel: 5, id, children });
+  return (
+    <h5 id={id} {...props}>
+      {children}
+    </h5>
+  );
+}
+
+export function H6ForTableOfContents({
+  id,
+  children,
+  ...props
+}: HTMLAttributes<HTMLHeadingElement>) {
+  useTableOfContents({ headingLevel: 6, id, children });
+  return (
+    <h6 id={id} {...props}>
+      {children}
+    </h6>
+  );
 }
 ```
 
-### 6. Main Component Implementation
-
-Wrap the content with the TOC provider and render the TOC.
+After creating the file above, you can use the `TableOfContentsProvider` and `TableOfContents` in your Server Component.
 
 ```tsx
-export default async function CurriculumModule(props) {
+export default async function CurriculumModule(props: Props) {
   let curriculumModule;
 
   try {
@@ -164,12 +244,22 @@ export default async function CurriculumModule(props) {
 
   return (
     <TableOfContentsProvider>
-      <details>
+      <details className="mt-[-0.6rem]">
         <summary>Table of Contents</summary>
         <TableOfContents />
       </details>
 
-      <MDXContent components={mdxComponents} params={props.params} />
+      <MDXContent
+        params={props.params}
+        components={{
+          h1: H1ForTableOfContents,
+          h2: H2ForTableOfContents,
+          h3: H3ForTableOfContents,
+          h4: H4ForTableOfContents,
+          h5: H5ForTableOfContents,
+          h6: H6ForTableOfContents,
+        }}
+      />
     </TableOfContentsProvider>
   );
 }

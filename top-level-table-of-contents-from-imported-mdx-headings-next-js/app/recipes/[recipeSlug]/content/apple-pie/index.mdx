@@ -1,0 +1,21 @@
+import Filling from './filling.mdx';
+
+export const metadata = {
+  title: 'Apple Pie Recipe',
+};
+
+{/* components passed from MDXContent in `app/recipes/[recipeSlug]/page.tsx` need to be prop drilled to imports, because nested MDXProvider not yet supported by @next/mdx https://github.com/vercel/next.js/issues/69613 */}
+
+<Filling components={props.components} />
+
+## Crust
+
+How to make the perfect flaky crust...
+
+### Preparing the dough
+
+Combine flour, sugar, salt...
+
+### The criss-cross top
+
+Cut the top crust into 1/2 inch strips...

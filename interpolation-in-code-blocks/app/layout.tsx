@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { ReactNode } from 'react';
 
 type Props = {
@@ -10,12 +9,7 @@ export default function RootLayout({ children }: Props) {
     <html>
       <head />
       <body>
-        <header>
-          <nav>
-            <Link href="/">Home</Link>{' '}
-            <Link href="/recipes/apple-pie">Apple Pie Recipe</Link>
-          </nav>
-        </header>
+        <style>{`pre { padding: 14px; border-radius: 6px }`}</style>
         <main>{children}</main>
       </body>
     </html>

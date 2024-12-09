@@ -16,7 +16,26 @@ pnpm add @mdx-js/loader@{props.versions.mdxJsLoader}
 ```
 ````
 
-To get around this limitation, create a custom `CodeBlock` component similar to [Shiki's Next.js (React Server Components) example](https://shiki.style/packages/next#react-server-component):
+![Screenshot showing curly braces appearing erroneously in final code block code](interpolation-in-code-blocks-code-fence-broken.avif)
+
+In the screenshot above, the curly braces are rendered as-is in the final code block, rather than being interpolated with the value of `props.versions.mdxJsLoader`.
+
+To get around this limitation, a custom `CodeBlock` component with a template string as children can be used to allow interpolation in the code block.
+
+The following example of this approach uses:
+
+- Next.js (App Router with React Server Components)
+- [`@next/mdx`](https://www.npmjs.com/package/@next/mdx)
+- [`dedent`](https://www.npmjs.com/package/dedent)
+- [`hast-util-to-jsx-runtime`](https://www.npmjs.com/package/hast-util-to-jsx-runtime)
+- [`shiki`](https://www.npmjs.com/package/shiki)
+
+![Screenshot of CodeSandbox, showing an interpolated value in a syntax-highlighted code block](./interpolation-in-code-blocks-codeblock.avif)
+
+- Code: https://github.com/karlhorky/mdx-tricks/tree/main/interpolation-in-code-blocks
+- CodeSandbox Demo: https://codesandbox.io/p/sandbox/github/karlhorky/mdx-tricks/tree/main/interpolation-in-code-blocks
+
+First, create a custom `CodeBlock` component similar to [Shiki's Next.js (React Server Components) example](https://shiki.style/packages/next#react-server-component):
 
 `components/CodeBlock.tsx`
 
@@ -32,7 +51,7 @@ type Props = {
   language: BundledLanguage;
 };
 
-export async function CodeBlock(props: Props) {
+export default async function CodeBlock(props: Props) {
   const out = await codeToHast(dedent(props.children), {
     lang: props.language,
     theme: 'dark-plus',
@@ -53,7 +72,9 @@ export async function CodeBlock(props: Props) {
             // Add class to `code` element, similar to the
             // @shiki/rehype `addLanguageClass` option:
             // https://github.com/shikijs/shiki/blob/662c54de96adb23ff1db84b60e9f5ecce786bb30/packages/rehype/test/index.test.ts#L37-L49
-            `language-${props.language} ${className ? ` ${String(className)}` : ''}`
+            `language-${props.language} ${
+              className ? ` ${String(className)}` : ''
+            }`
           }
         />
       ),
@@ -103,7 +124,7 @@ export default async function Page() {
 
 <CodeBlock language="bash">
   {`
-    pnpm add @mdx-js/loader@{props.versions.mdxJsLoader}
+    pnpm add @mdx-js/loader@${props.versions.mdxJsLoader}
   `}
 </CodeBlock>
 ```
@@ -311,7 +332,7 @@ The following example of this approach uses:
 
 ![Screenshot of CodeSandbox, showing an expanded multi-level table of contents](./top-level-table-of-contents-from-imported-mdx-headings-next-js-codesandbox.avif)
 
-- GitHub repository: https://github.com/karlhorky/mdx-tricks/tree/main/top-level-table-of-contents-from-imported-mdx-headings-next-js
+- Code: https://github.com/karlhorky/mdx-tricks/tree/main/top-level-table-of-contents-from-imported-mdx-headings-next-js
 - CodeSandbox Demo: https://codesandbox.io/p/sandbox/github/karlhorky/mdx-tricks/tree/main/top-level-table-of-contents-from-imported-mdx-headings-next-js
 
 First, set up the components and Context:

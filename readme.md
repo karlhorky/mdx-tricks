@@ -135,6 +135,123 @@ An added bonus of this implementation is that the `language` prop is type safe, 
 
 ![Screenshot of VS Code with MDX VS Code extension installed, showing a red squiggly line under an invalid `language` prop with the value `bbbbash`, and a hover card error with the message `Type '"bbbbash"' is not assignable to type 'BundledLanguage'`](interpolation-in-code-blocks-language-prop-error.avif)
 
+## Relative Videos without Imports
+
+[`rehype-mdx-import-media`](https://www.npmjs.com/package/rehype-mdx-import-media) allows for Markdown syntax to reference media such as images, audio and video relative to the MDX document, eg:
+
+`content/expo/index.mdx`
+
+```mdx
+![Expo dev server in terminal showing console.log output at bottom](expo-console-logging.avif)
+```
+
+This will result in:
+
+```tsx
+import _rehypeMdxImportMedia0 from './expo-console-logging.avif'
+
+export default function MDXContent() {
+  return (
+    <p>
+      <img
+        alt="Expo dev server in terminal showing console.log output at bottom"
+        src={_rehypeMdxImportMedia0}
+      />
+    </p>
+  )
+}
+```
+
+However, [this does not work out of the box with `<video>` elements](https://github.com/remcohaszing/rehype-mdx-import-media/issues/2), because:
+
+1. `<video>` JSX elements are not handled by `rehype-mdx-import-media` (more specifically, [JSX built-in components are not overridden by MDX](https://github.com/remcohaszing/rehype-mdx-import-media/issues/2#issuecomment-2198361734))
+2. Markdown doesn't have syntax for videos
+
+To work around these limitations, the Markdown image syntax can be hijacked to allow `.mp4` videos.
+
+The following example of this approach uses Next.js and `@next/mdx`.
+
+First, add a custom remark plugin to your MDX config in your `next.config.ts` file and `file-loader` config for the `.mp4` imports in webpack:
+
+`next.config.ts`
+
+```ts
+import withMDX from '@next/mdx';
+import type { Node, Root } from 'mdast';
+import type { NextConfig } from 'next';
+import rehypeMdxImportMedia from 'rehype-mdx-import-media';
+import { visit } from 'unist-util-visit';
+import type { Configuration } from 'webpack';
+
+const config: NextConfig = {
+  pageExtensions: ['js', 'jsx', 'mdx', 'ts', 'tsx'],
+
+  webpack: (webpackConfig: Configuration, { dev, isServer }) => {
+    webpackConfig.module!.rules!.push(
+      // .mp4 video loader for rehype-mdx-import-media
+      // - https://github.com/remcohaszing/rehype-mdx-import-media/issues/3#issuecomment-2198559076
+      // - https://stackoverflow.com/a/73729543/1268612
+      // - https://github.com/vercel/next.js/blob/b9bd23baec14508400c502b3651f4cf2497e883b/packages/next/src/build/webpack/loaders/next-image-loader/index.ts#L23-L54
+      // - https://github.com/jeremybarbet/next-videos/issues/24#issuecomment-2103003464
+      //
+      // TODO: Consider switching to next-file-loader or similar
+      // https://github.com/idootop/next-file-loader
+      {
+        test: /\.mp4$/,
+        use: [
+          {
+            loader: 'file-loader',
+            options: {
+              publicPath: '/_next/static/media/',
+              outputPath: `${dev ? '' : '../'}${isServer ? '../' : ''}static/media/`,
+              name: '[name].[hash:8].[ext]',
+            },
+          },
+        ],
+      },
+    );
+
+    return webpackConfig;
+  },
+};
+
+export default withMDX({
+  options: {
+    remarkPlugins: [
+      // Workaround for rehype-mdx-import-media not applying to
+      // `<video>` tags
+      // - https://github.com/karlhorky/mdx-tricks#relative-videos-without-imports
+      //
+      // Copied from @chailotl/remark-videos
+      // - https://github.com/chailotl/remark-videos
+      // - https://www.npmjs.com/package/@chailotl/remark-videos
+      () => (tree: Root) => {
+        visit(tree, 'image', (node) => {
+          if (typeof node.url === 'string' && node.url.endsWith('.mp4')) {
+            (node as Node).type = 'element';
+            node.data = {
+              hName: 'video',
+              hProperties: {
+                src: node.url,
+              },
+            };
+          }
+        });
+      },
+    ],
+    rehypePlugins: [
+      [rehypeMdxImportMedia],
+    ],
+  },
+})(config);
+```
+
+Then, specify your videos using the Markdown image syntax (alt is ignored):
+
+```mdx
+![](expo-android-virtual-device-start-expo-go.mp4)
+```
+
 ## Top-Level Table of Contents from Imported MDX Headings (Next.js)
 
 [`@jsdevtools/rehype-toc`](https://github.com/JS-DevTools/rehype-toc) is a rehype plugin for adding a table of contents to your Markdown and MDX documents, which works well for simple use cases, eg:

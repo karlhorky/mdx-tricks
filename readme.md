@@ -2,6 +2,139 @@
 
 A collection of useful MDX tricks
 
+## Interpolation in Code Blocks
+
+In some circumstances, interpolating dynamic values in code blocks can be useful (eg. to automatically update the content of code blocks). In MDX, it may seem that JSX curly brace expressions could be used within Markdown fenced code blocks, but [MDX doesn't currently support any affordance for interpolation in Markdown fenced code blocks](https://github.com/orgs/mdx-js/discussions/2288#discussioncomment-5696483).
+
+Eg. the following does not work:
+
+````mdx
+{/* DO NOT USE - Does not work */}
+
+```bash
+pnpm add @mdx-js/loader@{props.versions.mdxJsLoader}
+```
+````
+
+![Screenshot showing curly braces appearing erroneously in final code block code](interpolation-in-code-blocks-code-fence-broken.avif)
+
+In the screenshot above, the curly braces are rendered as-is in the final code block, rather than being interpolated with the value of `props.versions.mdxJsLoader`.
+
+To get around this limitation, a custom `CodeBlock` component with a template string as children can be used to allow interpolation in the code block.
+
+The following example of this approach uses:
+
+- Next.js (App Router with React Server Components)
+- [`@next/mdx`](https://www.npmjs.com/package/@next/mdx)
+- [`dedent`](https://www.npmjs.com/package/dedent)
+- [`hast-util-to-jsx-runtime`](https://www.npmjs.com/package/hast-util-to-jsx-runtime)
+- [`shiki`](https://www.npmjs.com/package/shiki)
+
+![Screenshot of CodeSandbox, showing an interpolated value in a syntax-highlighted code block](./interpolation-in-code-blocks-codeblock.avif)
+
+- Code: https://github.com/karlhorky/mdx-tricks/tree/main/interpolation-in-code-blocks
+- CodeSandbox Demo: https://codesandbox.io/p/sandbox/github/karlhorky/mdx-tricks/tree/main/interpolation-in-code-blocks
+
+First, create a custom `CodeBlock` component similar to [Shiki's Next.js (React Server Components) example](https://shiki.style/packages/next#react-server-component):
+
+`components/CodeBlock.tsx`
+
+```tsx
+import dedent from 'dedent';
+import { toJsxRuntime } from 'hast-util-to-jsx-runtime';
+import { Fragment, type JSX } from 'react';
+import { jsx, jsxs } from 'react/jsx-runtime';
+import { type BundledLanguage, codeToHast } from 'shiki';
+
+type Props = {
+  children: string;
+  language: BundledLanguage;
+};
+
+export default async function CodeBlock(props: Props) {
+  const out = await codeToHast(dedent(props.children), {
+    lang: props.language,
+    theme: 'dark-plus',
+  });
+
+  // Type assertion to avoid hast-util-to-jsx-runtime bug
+  // https://github.com/syntax-tree/hast-util-to-jsx-runtime/issues/10
+  return toJsxRuntime(out, {
+    Fragment,
+    jsx,
+    jsxs,
+    components: {
+      pre: (preProps) => <pre {...preProps} />,
+      code: ({ className, ...codeProps }) => (
+        <code
+          {...codeProps}
+          className={
+            // Add class to `code` element, similar to the
+            // @shiki/rehype `addLanguageClass` option:
+            // https://github.com/shikijs/shiki/blob/662c54de96adb23ff1db84b60e9f5ecce786bb30/packages/rehype/test/index.test.ts#L37-L49
+            `language-${props.language} ${
+              className ? ` ${String(className)}` : ''
+            }`
+          }
+        />
+      ),
+    },
+  }) as JSX.Element;
+}
+```
+
+Then, inject the component via `mdx-components.tsx` (Next.js) or `MDXProvider`:
+
+`mdx-components.tsx`
+
+```tsx
+import type { MDXComponents } from 'mdx/types.js';
+import CodeBlock from './components/CodeBlock.tsx';
+
+const components = {
+  CodeBlock: CodeBlock,
+} satisfies MDXComponents;
+
+export type MDXProvidedComponents = typeof components;
+
+export function useMDXComponents(): MDXProvidedComponents {
+  return components;
+}
+```
+
+Finally, you can now interpolate values in your MDX code blocks:
+
+`app/page.tsx`
+
+```tsx
+import Installation from '../content/installation.mdx';
+
+export default async function Page() {
+  const versions = await getVersions();
+  return <Installation versions={versions} />;
+}
+```
+
+`content/installation.mdx`
+
+```mdx
+{/* prettier-ignore *//** @typedef {import('../mdx-components.tsx').MDXProvidedComponents} MDXProvidedComponents */}
+
+{/* prettier-ignore *//** @typedef {{ versions: { mdxJsLoader: string } }} Props */}
+
+<CodeBlock language="bash">
+  {`
+    pnpm add @mdx-js/loader@${props.versions.mdxJsLoader}
+  `}
+</CodeBlock>
+```
+
+An added bonus of this implementation is that the `language` prop is type safe, meaning that [the MDX VS Code extension](https://marketplace.visualstudio.com/items?itemName=unifiedjs.vscode-mdx) can be configured to show you IntelliSense autosuggest and type errors:
+
+![Screenshot of VS Code with MDX VS Code extension installed, showing autosuggest entries for the `language` prop such as `bash`, `bat`, `berry`, `blade`, etc](interpolation-in-code-blocks-language-prop-autosuggest.avif)
+
+![Screenshot of VS Code with MDX VS Code extension installed, showing a red squiggly line under an invalid `language` prop with the value `bbbbash`, and a hover card error with the message `Type '"bbbbash"' is not assignable to type 'BundledLanguage'`](interpolation-in-code-blocks-language-prop-error.avif)
+
 ## Top-Level Table of Contents from Imported MDX Headings (Next.js)
 
 [`@jsdevtools/rehype-toc`](https://github.com/JS-DevTools/rehype-toc) is a rehype plugin for adding a table of contents to your Markdown and MDX documents, which works well for simple use cases, eg:
@@ -199,7 +332,7 @@ The following example of this approach uses:
 
 ![Screenshot of CodeSandbox, showing an expanded multi-level table of contents](./top-level-table-of-contents-from-imported-mdx-headings-next-js-codesandbox.avif)
 
-- GitHub repository: https://github.com/karlhorky/mdx-tricks/tree/main/top-level-table-of-contents-from-imported-mdx-headings-next-js
+- Code: https://github.com/karlhorky/mdx-tricks/tree/main/top-level-table-of-contents-from-imported-mdx-headings-next-js
 - CodeSandbox Demo: https://codesandbox.io/p/sandbox/github/karlhorky/mdx-tricks/tree/main/top-level-table-of-contents-from-imported-mdx-headings-next-js
 
 First, set up the components and Context:

@@ -2,6 +2,115 @@
 
 A collection of useful MDX tricks
 
+## Check TypeScript Types in MDX Files in Terminal
+
+Although [the MDX Analyzer VS Code extension](https://github.com/mdx-js/mdx-analyzer) can be used to show TypeScript type errors in VS Code, it [does not yet have a CLI (Command Line Interface)](https://github.com/mdx-js/mdx-analyzer/issues/292).
+
+Until a CLI exists, you can try out running this alternative CLI proof of concept with Node.js v22.18.0+:
+
+[`package.json`](https://github.com/karlhorky/poc-mdx-type-checker-cli/blob/main/package.json)
+
+```json
+{
+  "name": "poc-mdx-type-checker-cli",
+  "version": "1.0.0",
+  "keywords": [],
+  "license": "ISC",
+  "author": "Karl Horky",
+  "main": "index.js",
+  "scripts": {
+    "check": "node mdx-tsc/index.ts"
+  },
+  "devDependencies": {
+    "@mdx-js/language-service": "0.7.2",
+    "@types/node": "24.3.0",
+    "@types/react": "19.1.11",
+    "@volar/typescript": "2.4.23",
+    "remark-frontmatter": "5.0.0",
+    "remark-gfm": "4.0.1",
+    "typescript": "5.9.2"
+  },
+  "packageManager": "pnpm@10.15.0",
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}
+```
+
+[`mdx-tsc/index.ts`](https://github.com/karlhorky/poc-mdx-type-checker-cli/blob/main/mdx-tsc/index.ts)
+
+```ts
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createMdxLanguagePlugin } from '@mdx-js/language-service';
+import { runTsc } from '@volar/typescript/lib/quickstart/runTsc.js';
+import remarkFrontmatter from 'remark-frontmatter';
+import remarkGfm from 'remark-gfm';
+
+// Avoid discovering root tsconfig.json
+process.argv.push(
+  '--project',
+  path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    'tsconfig.mdx-tsc.json',
+  ),
+);
+
+// Run TypeScript through Volar for `.mdx` files.
+runTsc(
+  fileURLToPath(import.meta.resolve('typescript/lib/tsc.js')),
+  ['.mdx'],
+  () => ({
+    languagePlugins: [
+      createMdxLanguagePlugin(
+        [[remarkFrontmatter, ['toml', 'yaml']], remarkGfm], // Default remark plugins
+        [], // virtualCodePlugins - empty array for now
+        true, // checkMdx flag - always true for type checking
+        'react-jsx',
+      ),
+    ],
+  }),
+);
+```
+
+[`mdx-tsc/tsconfig.mdx-tsc.json`](https://github.com/karlhorky/poc-mdx-type-checker-cli/blob/main/mdx-tsc/tsconfig.mdx-tsc.json)
+
+```json
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "checkJs": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "mdx": {
+    // Type check MDX files
+    "checkMdx": true
+  },
+  "include": ["../**/*.mdx"],
+  "exclude": ["node_modules"]
+}
+```
+
+Run the CLI with `node mdx-tsc/index.ts`, and it will report type errors in your MDX files:
+
+![Screenshot showing MDX TypeScript errors being reported in the terminal](mdx-ts-vscode.avif)
+
+- Code: https://github.com/karlhorky/poc-mdx-type-checker-cli
+
 ## Interpolation in Code Blocks
 
 In some circumstances, interpolating dynamic values in code blocks can be useful (eg. to automatically update the content of code blocks). In MDX, it may seem that JSX curly brace expressions could be used within Markdown fenced code blocks, but [MDX doesn't currently support any affordance for interpolation in Markdown fenced code blocks](https://github.com/orgs/mdx-js/discussions/2288#discussioncomment-5696483).

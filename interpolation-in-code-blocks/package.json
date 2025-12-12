@@ -11,7 +11,7 @@
     "@types/mdx": "2.0.13",
     "dedent": "1.5.3",
     "hast-util-to-jsx-runtime": "2.3.2",
-    "next": "15.4.7",
+    "next": "15.4.9",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "shiki": "1.24.1"

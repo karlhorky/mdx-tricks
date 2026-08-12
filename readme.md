@@ -4,6 +4,8 @@ A collection of useful MDX tricks
 
 ## Check TypeScript Types in MDX Files in Terminal
 
+Update: [@hipstersmoothie](https://github.com/hipstersmoothie) wrote a [comment in July 2026](https://github.com/mdx-js/mdx-analyzer/issues/292#issuecomment-4900606958) that he created an npm package [`mdx-tsc`](https://www.npmjs.com/package/mdx-tsc) based on my proof of concept below
+
 Although [the MDX Analyzer VS Code extension](https://github.com/mdx-js/mdx-analyzer) can be used to show TypeScript type errors in VS Code, it [does not yet have a CLI (Command Line Interface)](https://github.com/mdx-js/mdx-analyzer/issues/292).
 
 Until a CLI exists, you can try out running this alternative CLI proof of concept with Node.js v22.18.0+:
